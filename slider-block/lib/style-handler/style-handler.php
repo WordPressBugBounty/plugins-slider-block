@@ -97,7 +97,7 @@ if ( ! class_exists( 'EbStyleHandler' ) ) {
             unset( $recursive_response["reusableBlocks"] );
             $style       = EbStyleHandlerParseCss::blocks_to_style_array( $recursive_response );
             $reusableIds = $reusable_Blocks && is_array( $reusable_Blocks ) ? array_keys( $reusable_Blocks ) : [];
-            if ( ! empty( $reusableIds ) ) {
+            if ( ! empty( $reusableIds ) && self::is_template_post( $post ) ) {
                 update_option( '_eb_reusable_block_ids', $reusableIds );
             }
             update_post_meta( $post_id, '_eb_reusable_block_ids', $reusableIds );
@@ -166,7 +166,7 @@ if ( ! class_exists( 'EbStyleHandler' ) ) {
                 // Reusable block Style Enqueues
                 $reusableIds         = get_post_meta( $post->ID, '_eb_reusable_block_ids', true );
                 $reusableIds         = ! empty( $reusableIds ) ? $reusableIds : [];
-                $templateReusableIds = get_option( '_eb_reusable_block_ids', [] );
+                $templateReusableIds = array_filter( (array) get_option( '_eb_reusable_block_ids', [] ), [ __CLASS__, 'is_published_reusable_block' ] );
                 $reusableIds         = array_unique( array_merge( $reusableIds, $templateReusableIds ) );
                 if ( ! empty( $reusableIds ) && is_array( $reusableIds ) ) {
                     foreach ( $reusableIds as $reusableId ) {
@@ -271,7 +271,7 @@ if ( ! class_exists( 'EbStyleHandler' ) ) {
 
                         $style       = EbStyleHandlerParseCss::blocks_to_style_array( $recursive_response );
                         $reusableIds = $reusable_Blocks && is_array( $reusable_Blocks ) ? array_keys( $reusable_Blocks ) : [];
-                        if ( ! empty( $reusableIds ) ) {
+                        if ( ! empty( $reusableIds ) && self::is_template_post( $post ) ) {
                             update_option( '_eb_reusable_block_ids', $reusableIds );
                         }
                         update_post_meta( $post_id, '_eb_reusable_block_ids', $reusableIds );
@@ -289,6 +289,27 @@ if ( ! class_exists( 'EbStyleHandler' ) ) {
         }
 
         /**
+         * Whether a post is a block template or template part.
+         *
+         * @param WP_Post|null $post Post.
+         * @return bool
+         */
+        private static function is_template_post( $post ) {
+            return isset( $post->post_type ) && in_array( $post->post_type, [ 'wp_template', 'wp_template_part' ], true );
+        }
+
+        /**
+         * Whether an ID is a published reusable block.
+         *
+         * @param mixed $id Post ID.
+         * @return bool
+         */
+        public static function is_published_reusable_block( $id ) {
+            $id = absint( $id );
+            return $id && 'wp_block' === get_post_type( $id ) && 'publish' === get_post_status( $id );
+        }
+
+        /**
          * Ajax callback to write css in upload directory
          * @retun void
          * @since 1.0.2
@@ -301,7 +322,8 @@ if ( ! class_exists( 'EbStyleHandler' ) ) {
             }
             // Write CSS for Page/Posts
             else {
-                if ( ! empty( $css = EbStyleHandlerParseCss::build_css( $block_styles ) ) ) {
+                $sanitize = ! EbStyleHandlerParseCss::is_trusted_post( $post );
+                if ( ! empty( $css = EbStyleHandlerParseCss::build_css( $block_styles, $sanitize ) ) ) {
                     $upload_dir = wp_upload_dir()['basedir'] . '/eb-style/';
                     if ( ! file_exists( $upload_dir ) ) {
                         mkdir( $upload_dir );
@@ -318,7 +340,8 @@ if ( ! class_exists( 'EbStyleHandler' ) ) {
          */
         private function write_reusable_block_css( $block_styles, $id ) {
             if ( isset( $block_styles ) && is_array( $block_styles ) ) {
-                if ( ! empty( $css = EbStyleHandlerParseCss::build_css( $block_styles ) ) ) {
+                $sanitize = ! EbStyleHandlerParseCss::is_trusted_post( get_post( absint( $id ) ) );
+                if ( ! empty( $css = EbStyleHandlerParseCss::build_css( $block_styles, $sanitize ) ) ) {
                     $upload_dir = wp_upload_dir()['basedir'] . '/eb-style/reusable-blocks/';
                     if ( ! file_exists( $upload_dir ) ) {
                         mkdir( $upload_dir );
